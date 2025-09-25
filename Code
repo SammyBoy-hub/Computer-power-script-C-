@@ -1,0 +1,141 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Events;
+using UnityEngine.XR;
+
+public class ComputerPower : MonoBehaviour
+{
+    [Header("Computer")]
+    public GameObject button;
+    public Transform ComputerPoint;
+
+    [Header("Mouse")]
+    public float speed = 0.01f;
+    public GameObject MouseArea;
+    public GameObject Mouse;
+    [SerializeField] private BoxCollider areaBounds;
+
+    [Header("Player")]
+    public GameObject Origin;
+    public GameObject HandModell;
+    public GameObject LeftController;
+    public GameObject LeftControllerTP;
+    public GameObject Locomotion;
+    public HandGestureController HDGCSkript;
+    public GameObject RightController;
+    public GameObject RightControllerTP;
+
+    [Header("Other")]
+    public GameObject MonitorUI;
+    public float fixedMouseHeight = -0.129f; // Tischhöhe, y fest
+
+    [Header("Events")]
+    public UnityEvent onPress;
+    public UnityEvent onRelease;
+
+    private GameObject presser;
+    private AudioSource sound;
+    private bool isPressed;
+
+    private InputDevice rightHandDevice;
+    private bool isPoweredOn = false;
+
+    void Start()
+    {
+        areaBounds = MouseArea.GetComponent<BoxCollider>();
+        sound = GetComponent<AudioSource>();
+        isPressed = false;
+
+        // Rechten Controller holen
+        List<InputDevice> devices = new List<InputDevice>();
+        InputDevices.GetDevicesAtXRNode(XRNode.RightHand, devices);
+        if (devices.Count > 0)
+            rightHandDevice = devices[0];
+        else
+            Debug.LogWarning("Rechter XR Controller nicht gefunden!");
+    }
+
+    void Update()
+    {
+        if (!isPoweredOn) return;
+
+        if (rightHandDevice.isValid)
+        {
+            Vector2 joystickInput;
+            if (rightHandDevice.TryGetFeatureValue(CommonUsages.primary2DAxis, out joystickInput))
+            {
+                // Joystick x = Maus x (links/rechts), y = Maus z (vor/zurück)
+                Vector3 move = new Vector3(joystickInput.y, 0, joystickInput.x) * speed;
+                Mouse.transform.position += move;
+
+                ClampMousePosition();
+
+                Debug.Log($"Joystick X: {joystickInput.x}, Y: {joystickInput.y} | Maus Pos: {Mouse.transform.position}");
+            }
+        }
+        else
+        {
+            // Controller ggf. neu suchen
+            List<InputDevice> devices = new List<InputDevice>();
+            InputDevices.GetDevicesAtXRNode(XRNode.RightHand, devices);
+            if (devices.Count > 0)
+                rightHandDevice = devices[0];
+        }
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (!isPressed)
+        {
+            button.transform.localPosition = new Vector3(-0.00309f, 0.00641f, 0.00502f);
+            presser = other.gameObject;
+            sound.Play();
+            isPressed = true;
+
+            onPress.Invoke();
+        }
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (other.gameObject == presser)
+        {
+            button.transform.localPosition = new Vector3(-0.00309f, 0.006499f, 0.00502f);
+            onRelease.Invoke();
+            isPressed = false;
+        }
+    }
+
+    public void PowerOn()
+    {
+        Origin.transform.position = ComputerPoint.position;
+        Origin.transform.rotation = Quaternion.Euler(0f, -90f, 0f);
+
+        LeftController.SetActive(false);
+        LeftControllerTP.SetActive(false);
+        RightControllerTP.SetActive(false);
+        RightController.SetActive(false);
+        Locomotion.SetActive(false);
+        HDGCSkript.enabled = false;
+
+        MonitorUI.SetActive(true);
+
+        Debug.Log("Computer has been Started");
+
+        isPoweredOn = true;
+    }
+
+    void ClampMousePosition()
+    {
+        if (areaBounds == null || Mouse == null) return;
+
+        Bounds bounds = areaBounds.bounds;
+        Vector3 pos = Mouse.transform.position;
+
+        pos.x = Mathf.Clamp(pos.x, bounds.min.x, bounds.max.x);
+        pos.z = Mathf.Clamp(pos.z, bounds.min.z, bounds.max.z);
+        pos.y = fixedMouseHeight;
+
+        Mouse.transform.position = pos;
+    }
+}
